@@ -1,12 +1,15 @@
--- VBL Auto Spin v1.1 | Roblox Luau
+-- VBL Auto Spin v1.2.1 | Roblox Luau
 -- Standalone: no external HTTP requests. Normal/Lucky both consume real spins.
 -- In historical VBL Roll examples false = Normal. true = Lucky is assumed,
 -- NOT verified against the current game. Test Lucky with limit 1 first.
 -- Game remotes and UI paths may change after updates.
+-- Settings auto-save to a local JSON file if readfile/writefile are supported.
+-- Nothing runs automatically when settings are loaded.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 if not player then return end
 local playerGui = player:WaitForChild("PlayerGui")
@@ -17,6 +20,7 @@ if env.VBLSpinControl and type(env.VBLSpinControl.Close) == "function" then
 end
 local alive, running, token = true, false, 0
 local gui
+local saveOnClose
 local function stop()
     running = false
     token = token + 1
@@ -24,6 +28,7 @@ end
 local controller = { Close = function()
     alive = false
     stop()
+    if saveOnClose then pcall(saveOnClose) end
     if gui then gui:Destroy() end
 end }
 env.VBLSpinControl = controller
@@ -164,8 +169,8 @@ gui = new("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100,
 }, playerGui)
 local main = new("Frame", {
-    Name = "Panel", Size = UDim2.fromOffset(360, 410),
-    Position = UDim2.new(0.5, -180, 0.5, -205),
+    Name = "Panel", Size = UDim2.fromOffset(360, 444),
+    Position = UDim2.new(0.5, -180, 0.5, -222),
     BackgroundColor3 = C.bg, Active = true,
 }, gui)
 round(main, 12)
@@ -175,7 +180,7 @@ local header = new("Frame", {
     Active = true,
 }, main)
 round(header, 12)
-label(header, "VBL AUTO SPIN  |  v1.1", 12, 20, 15, C.white)
+label(header, "VBL AUTO SPIN  |  v1.2.1", 12, 20, 15, C.white)
 local minimize = button(header, "–", 286, 7, 28, 28)
 local close = button(header, "X", 320, 7, 28, 28, C.red)
 local body = new("Frame", {
@@ -201,15 +206,110 @@ local status = label(body, "Sẵn sàng | Mặc định NORMAL", 297, 27, 12, C.
 status.TextWrapped = true
 local progress = label(body, "Đã gửi: 0 lượt", 326, 18, 12, C.muted)
 local note = label(body, "LUCKY: test giới hạn 1 lượt trước khi dùng nhiều!", 347, 18, 11, C.muted)
+local settingsHint = label(body, "Cài đặt: đang tải...", 371, 18, 11, C.muted)
+settingsHint.Size = UDim2.fromOffset(255, 18)
+local saveBtn = button(body, "LƯU", 280, 365, 65, 27, C.blue)
 
 local mode, spinKind = "Style", "Normal"
 local luckyArmedUntil = 0
+
+-- Save only harmless UI preferences; never persist the running state.
+local configFile = "VBL_AutoSpin_settings.json"
+local targets = { Style = "", Ability = "" }
+local function sanitizedConfig(raw)
+    if type(raw) ~= "table" then return nil end
+    local incoming = type(raw.targets) == "table" and raw.targets or {}
+    return {
+        version = 1,
+        mode = raw.mode == "Ability" and "Ability" or "Style",
+        spinKind = raw.spinKind == "Lucky" and "Lucky" or "Normal",
+        targets = {
+            Style = type(incoming.Style) == "string" and incoming.Style:sub(1, 2000) or "",
+            Ability = type(incoming.Ability) == "string" and incoming.Ability:sub(1, 2000) or "",
+        },
+        delay = type(raw.delay) == "string" and raw.delay:sub(1, 30) or "2.0",
+        limit = type(raw.limit) == "string" and raw.limit:sub(1, 30) or "100",
+    }
+end
+
+local function loadSettings()
+    if type(readfile) == "function" then
+        local ok, contents = pcall(readfile, configFile)
+        if ok and type(contents) == "string" then
+            local valid, decoded = pcall(function()
+                return HttpService:JSONDecode(contents)
+            end)
+            if valid then
+                local cfg = sanitizedConfig(decoded)
+                if cfg then return cfg, "file" end
+            end
+        end
+    end
+    local cached = sanitizedConfig(env.VBLSpinSettingsCache)
+    if cached then return cached, "session" end
+    return nil, "default"
+end
+
+local function saveSettings()
+    targets[mode] = targetBox.Text
+    local cfg = {
+        version = 1, mode = mode, spinKind = spinKind,
+        targets = { Style = targets.Style, Ability = targets.Ability },
+        delay = delayBox.Text, limit = countBox.Text,
+    }
+    -- In-memory fallback lasts until the executor session ends.
+    env.VBLSpinSettingsCache = cfg
+    if type(writefile) == "function" and type(readfile) == "function" then
+        local ok, err = pcall(function()
+            writefile(configFile, HttpService:JSONEncode(cfg))
+        end)
+        if ok then
+            settingsHint.Text = "Đã lưu tự động (JSON)"
+            settingsHint.TextColor3 = C.green
+            return true
+        end
+        settingsHint.Text = "Lỗi lưu file: " .. tostring(err):sub(1, 22)
+        settingsHint.TextColor3 = C.red
+        return false
+    end
+    settingsHint.Text = "Chỉ nhớ trong phiên này"
+    settingsHint.TextColor3 = C.red
+    return false
+end
+
+local restored, restoreSource = loadSettings()
+if restored then
+    mode = restored.mode
+    spinKind = restored.spinKind
+    targets = restored.targets
+    targetBox.Text = targets[mode]
+    delayBox.Text = restored.delay
+    countBox.Text = restored.limit
+end
+settingsHint.Text = restoreSource == "file" and "Đã tải thiết lập đã lưu"
+    or restoreSource == "session" and "Đã tải thiết lập trong phiên"
+    or "Chưa có thiết lập đã lưu"
+settingsHint.TextColor3 = restoreSource == "file" and C.green or C.muted
+saveOnClose = saveSettings
+
 local function refreshButtons()
     styleBtn.BackgroundColor3 = mode == "Style" and C.blue or C.input
     abilityBtn.BackgroundColor3 = mode == "Ability" and C.blue or C.input
     normalBtn.BackgroundColor3 = spinKind == "Normal" and C.blue or C.input
     luckyBtn.BackgroundColor3 = spinKind == "Lucky" and C.blue or C.input
 end
+refreshButtons()
+
+local function chooseMode(nextMode)
+    if running then return end
+    targets[mode] = targetBox.Text
+    mode = nextMode
+    targetBox.Text = targets[mode]
+    luckyArmedUntil = 0
+    refreshButtons()
+    saveSettings()
+end
+
 local function setStatus(message, color)
     if alive then status.Text = message; status.TextColor3 = color or C.muted end
 end
@@ -218,22 +318,33 @@ local function refreshStart()
     startBtn.BackgroundColor3 = running and C.red or C.green
 end
 styleBtn.MouseButton1Click:Connect(function()
-    if not running then mode = "Style"; luckyArmedUntil = 0; refreshButtons() end
+    chooseMode("Style")
 end)
 abilityBtn.MouseButton1Click:Connect(function()
-    if not running then mode = "Ability"; luckyArmedUntil = 0; refreshButtons() end
+    chooseMode("Ability")
 end)
 normalBtn.MouseButton1Click:Connect(function()
     if not running then
         spinKind = "Normal"; luckyArmedUntil = 0; refreshButtons()
+        saveSettings()
         setStatus("Đã chọn Normal Spin")
     end
 end)
 luckyBtn.MouseButton1Click:Connect(function()
     if not running then
         spinKind = "Lucky"; luckyArmedUntil = 0; refreshButtons()
+        saveSettings()
         setStatus("Lucky Spin dùng vé hiếm, cần xác nhận trước khi quay", C.red)
     end
+end)
+
+-- Auto-save after editing a text field, and allow explicit save.
+targetBox.FocusLost:Connect(function() saveSettings() end)
+delayBox.FocusLost:Connect(function() saveSettings() end)
+countBox.FocusLost:Connect(function() saveSettings() end)
+saveBtn.MouseButton1Click:Connect(function()
+    if saveSettings() then setStatus("Đã lưu thiết lập trên máy", C.green)
+    else setStatus("Executor chưa hỗ trợ lưu qua phiên", C.red) end
 end)
 
 startBtn.MouseButton1Click:Connect(function()
@@ -243,12 +354,13 @@ startBtn.MouseButton1Click:Connect(function()
         setStatus("Đã dừng thủ công")
         return
     end
+    saveSettings()
     local wanted, n = targetsFrom(targetBox.Text)
     local delay = tonumber(delayBox.Text)
     local limit = tonumber(countBox.Text)
     if n == 0 then setStatus("Nhập ít nhất một tên mục tiêu!", C.red); return end
-    if not delay or delay < 1.5 or delay > 15 then
-        setStatus("Giãn cách phải từ 1.5 đến 15 giây", C.red); return
+    if not delay or delay < 0.5 or delay > 15 then
+        setStatus("Giãn cách phải từ 0.5 đến 15 giây", C.red); return
     end
     if not limit or limit % 1 ~= 0 or limit < 1 or limit > 10000 then
         setStatus("Giới hạn phải từ 1 đến 10000 lượt", C.red); return
@@ -326,7 +438,7 @@ local minimized = false
 minimize.MouseButton1Click:Connect(function()
     minimized = not minimized
     body.Visible = not minimized
-    main.Size = UDim2.fromOffset(360, minimized and 43 or 410)
+    main.Size = UDim2.fromOffset(360, minimized and 43 or 444)
     minimize.Text = minimized and "+" or "–"
 end)
 
