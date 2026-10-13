@@ -1,10 +1,13 @@
--- VBL Auto Spin v1.2.1 | Roblox Luau
+-- VBL Auto Spin v1.3 | Roblox Luau
 -- Standalone: no external HTTP requests. Normal/Lucky both consume real spins.
 -- In historical VBL Roll examples false = Normal. true = Lucky is assumed,
 -- NOT verified against the current game. Test Lucky with limit 1 first.
 -- Game remotes and UI paths may change after updates.
 -- Settings auto-save to a local JSON file if readfile/writefile are supported.
 -- Nothing runs automatically when settings are loaded.
+-- Optional handoff: after reaching the configured roll LIMIT without the target,
+-- execute the FurHub loader. NEVER triggers FurHub's rollback button or payload.
+-- FurHub is third-party obfuscated code: enabling this option runs unverified code.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -169,8 +172,8 @@ gui = new("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100,
 }, playerGui)
 local main = new("Frame", {
-    Name = "Panel", Size = UDim2.fromOffset(360, 444),
-    Position = UDim2.new(0.5, -180, 0.5, -222),
+    Name = "Panel", Size = UDim2.fromOffset(360, 480),
+    Position = UDim2.new(0.5, -180, 0.5, -240),
     BackgroundColor3 = C.bg, Active = true,
 }, gui)
 round(main, 12)
@@ -180,7 +183,7 @@ local header = new("Frame", {
     Active = true,
 }, main)
 round(header, 12)
-label(header, "VBL AUTO SPIN  |  v1.2.1", 12, 20, 15, C.white)
+label(header, "VBL AUTO SPIN  |  v1.3", 12, 20, 15, C.white)
 local minimize = button(header, "–", 286, 7, 28, 28)
 local close = button(header, "X", 320, 7, 28, 28, C.red)
 local body = new("Frame", {
@@ -209,8 +212,12 @@ local note = label(body, "LUCKY: test giới hạn 1 lượt trước khi dùng 
 local settingsHint = label(body, "Cài đặt: đang tải...", 371, 18, 11, C.muted)
 settingsHint.Size = UDim2.fromOffset(255, 18)
 local saveBtn = button(body, "LƯU", 280, 365, 65, 27, C.blue)
+local hubBtn = button(body, "HẾT GIỚI HẠN → FURHUB: TẮT", 15, 397, 330, 32)
+local hubHint = label(body, "Chỉ mở hub; KHÔNG tự nhấn Roll Back Data", 432, 17, 11, C.muted)
 
-local mode, spinKind = "Style", "Normal"
+local FURHUB_URL = "https://raw.githubusercontent.com/mrmangola/FurHub/main/FurHub"
+
+local mode, spinKind, openFurHub = "Style", "Normal", false
 local luckyArmedUntil = 0
 
 -- Save only harmless UI preferences; never persist the running state.
@@ -223,6 +230,7 @@ local function sanitizedConfig(raw)
         version = 1,
         mode = raw.mode == "Ability" and "Ability" or "Style",
         spinKind = raw.spinKind == "Lucky" and "Lucky" or "Normal",
+        openFurHub = raw.openFurHub == true,
         targets = {
             Style = type(incoming.Style) == "string" and incoming.Style:sub(1, 2000) or "",
             Ability = type(incoming.Ability) == "string" and incoming.Ability:sub(1, 2000) or "",
@@ -254,6 +262,7 @@ local function saveSettings()
     targets[mode] = targetBox.Text
     local cfg = {
         version = 1, mode = mode, spinKind = spinKind,
+        openFurHub = openFurHub,
         targets = { Style = targets.Style, Ability = targets.Ability },
         delay = delayBox.Text, limit = countBox.Text,
     }
@@ -281,6 +290,7 @@ local restored, restoreSource = loadSettings()
 if restored then
     mode = restored.mode
     spinKind = restored.spinKind
+    openFurHub = restored.openFurHub
     targets = restored.targets
     targetBox.Text = targets[mode]
     delayBox.Text = restored.delay
@@ -297,6 +307,8 @@ local function refreshButtons()
     abilityBtn.BackgroundColor3 = mode == "Ability" and C.blue or C.input
     normalBtn.BackgroundColor3 = spinKind == "Normal" and C.blue or C.input
     luckyBtn.BackgroundColor3 = spinKind == "Lucky" and C.blue or C.input
+    hubBtn.BackgroundColor3 = openFurHub and C.red or C.input
+    hubBtn.Text = openFurHub and "HẾT GIỚI HẠN → FURHUB: BẬT" or "HẾT GIỚI HẠN → FURHUB: TẮT"
 end
 refreshButtons()
 
@@ -342,6 +354,16 @@ end)
 targetBox.FocusLost:Connect(function() saveSettings() end)
 delayBox.FocusLost:Connect(function() saveSettings() end)
 countBox.FocusLost:Connect(function() saveSettings() end)
+hubBtn.MouseButton1Click:Connect(function()
+    if running then
+        setStatus("Dừng Auto Spin trước khi đổi tùy chọn FurHub", C.red)
+        return
+    end
+    openFurHub = not openFurHub
+    refreshButtons()
+    saveSettings()
+    setStatus(openFurHub and "FurHub sẽ chạy khi chạm giới hạn mà chưa trúng" or "Đã tắt tự mở FurHub", openFurHub and C.red or C.muted)
+end)
 saveBtn.MouseButton1Click:Connect(function()
     if saveSettings() then setStatus("Đã lưu thiết lập trên máy", C.green)
     else setStatus("Executor chưa hỗ trợ lưu qua phiên", C.red) end
@@ -393,40 +415,95 @@ startBtn.MouseButton1Click:Connect(function()
     progress.Text = "Đã gửi: 0 lượt"
     task.spawn(function()
         local rolls = 0
+        local finishReason = nil
         while alive and running and token == myToken do
             current = readName()
             if not current then
+                finishReason = "read_error"
                 setStatus("Không đọc được kết quả, đã dừng để tránh hao spin", C.red)
                 break
             end
             progress.Text = ("Hiện tại: %s  |  Đã gửi: %d/%d"):format(current, rolls, limit)
+            -- Hitting the target ALWAYS has priority over the limit / FurHub.
             if wanted[norm(current)] then
+                finishReason = "target"
                 setStatus("TRÚNG MỤC TIÊU: " .. current, C.green)
                 break
             end
             if rolls >= limit then
-                setStatus("Đã chạm giới hạn " .. limit .. " lượt", C.muted)
+                finishReason = "limit"
                 break
             end
             setStatus("Đang quay " .. spinKind .. " " .. mode .. "...", C.blue)
             -- Historical examples use false for Normal; true for Lucky is unverified.
-            -- No fallback: if Lucky is rejected, stop instead of using Normal.
             local ok, result = pcall(function() return remote:InvokeServer(useLucky) end)
+            if not (alive and running and token == myToken) then
+                finishReason = "cancelled"
+                break
+            end
             if not ok then
+                finishReason = "remote_error"
                 setStatus("Lỗi gọi lệnh quay: " .. tostring(result):sub(1, 68), C.red)
                 break
             end
-            if not (alive and running and token == myToken) then break end
             if result == false then
-                setStatus("Server từ chối spin (có thể đã hết lượt)", C.red)
+                -- Could be no spins, cooldown, server rejection, etc. Never guess.
+                finishReason = "rejected"
+                setStatus("Server từ chối spin; chưa xác minh nguyên nhân", C.red)
                 break
             end
             rolls = rolls + 1
             task.wait(delay)
         end
-        if alive and token == myToken then
+
+        if not (alive and running and token == myToken) then return end
+        -- Let the final roll's UI result settle before any optional handoff.
+        if finishReason == "limit" then
+            local finalName = readName()
+            for _ = 1, 10 do
+                if not (alive and running and token == myToken) then return end
+                if finalName and wanted[norm(finalName)] then
+                    finishReason = "target"
+                    setStatus("TRÚNG MỤC TIÊU: " .. finalName, C.green)
+                    break
+                end
+                task.wait(0.15)
+                finalName = readName()
+            end
+            if finishReason == "limit" and not finalName then
+                finishReason = "read_error"
+                setStatus("Không đọc được kết quả lượt cuối; KHÔNG mở FurHub", C.red)
+            end
+        end
+
+        if alive and running and token == myToken then
             running = false
             refreshStart()
+            if finishReason == "limit" then
+                if not openFurHub then
+                    setStatus("Đã chạm giới hạn " .. limit .. " lượt; FurHub đang tắt", C.muted)
+                else
+                    setStatus("Không trúng sau " .. limit .. " lượt. Đang mở FurHub...", C.blue)
+                    -- Optional external script execution: explicitly enabled via UI.
+                    task.spawn(function()
+                        if not alive or token ~= myToken then return end
+                        local ok, err = pcall(function()
+                            if type(loadstring) ~= "function" then
+                                error("Executor không hỗ trợ loadstring")
+                            end
+                            local source = game:HttpGet(FURHUB_URL)
+                            local entry = loadstring(source)
+                            if type(entry) ~= "function" then error("Không tải được FurHub") end
+                            entry()
+                        end)
+                        if not ok then
+                            setStatus("Lỗi mở FurHub: " .. tostring(err):sub(1, 65), C.red)
+                        else
+                            setStatus("Đã gọi FurHub; chọn Roll Back Data thủ công", C.green)
+                        end
+                    end)
+                end
+            end
         end
     end)
 end)
@@ -438,7 +515,7 @@ local minimized = false
 minimize.MouseButton1Click:Connect(function()
     minimized = not minimized
     body.Visible = not minimized
-    main.Size = UDim2.fromOffset(360, minimized and 43 or 444)
+    main.Size = UDim2.fromOffset(360, minimized and 43 or 480)
     minimize.Text = minimized and "+" or "–"
 end)
 
