@@ -1,5 +1,5 @@
--- VBL Auto Spin v1.4 | Roblox Luau
--- Standalone: no external HTTP requests. Normal/Lucky both consume real spins.
+-- Auto Spin Vip Pro | Roblox Luau
+-- Normal/Lucky consume real spins. FurHub is loaded only if requested in UI.
 -- In historical VBL Roll examples false = Normal. true = Lucky is assumed,
 -- NOT verified against the current game. Test Lucky with limit 1 first.
 -- Game remotes and UI paths may change after updates.
@@ -169,66 +169,86 @@ local function button(parent, text, x, y, w, h, color)
     return obj
 end
 
--- Adaptive panel height for mobile landscape; scroll to reach all options.
-local function expandedHeight()
-    local cam = workspace.CurrentCamera
-    local viewportY = cam and cam.ViewportSize.Y or 600
-    return math.max(280, math.min(545, viewportY - 24))
+-- Compact single-panel UI: every control is visible without scrolling.
+-- The UIScale adjusts the whole panel to small mobile viewports.
+local PANEL_W, PANEL_H = 360, 405
+local uiScale
+local function fitToViewport()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(960, 600)
+    if uiScale then
+        uiScale.Scale = math.min(1, (viewport.X - 22) / PANEL_W, (viewport.Y - 22) / PANEL_H)
+    end
 end
-local fullHeight = expandedHeight()
 
 gui = new("ScreenGui", {
-    Name = "VBL_AutoSpin_Standalone", ResetOnSpawn = false,
+    Name = "AutoSpinVipPro", ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100,
 }, playerGui)
 local main = new("Frame", {
-    Name = "Panel", Size = UDim2.fromOffset(360, fullHeight),
-    Position = UDim2.new(0.5, -180, 0.5, -fullHeight / 2),
+    Name = "Panel", Size = UDim2.fromOffset(PANEL_W, PANEL_H),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
     BackgroundColor3 = C.bg, Active = true,
 }, gui)
+uiScale = new("UIScale", { Scale = 1 }, main)
+fitToViewport()
 round(main, 12)
 new("UIStroke", { Color = Color3.fromRGB(62, 71, 95), Thickness = 1 }, main)
 local header = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 43), BackgroundColor3 = C.panel,
+    Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C.panel,
     Active = true,
 }, main)
 round(header, 12)
-label(header, "VBL AUTO SPIN", 12, 20, 15, C.white)
+local heading = label(header, "Auto Spin Vip Pro", 11, 20, 15, C.white)
+heading.Font = Enum.Font.GothamBold
 local minimize = button(header, "–", 286, 7, 28, 28)
 local close = button(header, "X", 320, 7, 28, 28, C.red)
-local body = new("ScrollingFrame", {
-    Position = UDim2.fromOffset(0, 43), Size = UDim2.new(1, 0, 1, -43),
-    BackgroundTransparency = 1, BorderSizePixel = 0,
-    CanvasSize = UDim2.fromOffset(0, 532),
-    ScrollBarThickness = 4, ScrollingDirection = Enum.ScrollingDirection.Y,
-    Active = true,
+local body = new("Frame", {
+    Position = UDim2.fromOffset(0, 42),
+    Size = UDim2.new(1, 0, 1, -42), BackgroundTransparency = 1,
 }, main)
-label(body, "Chọn loại spin", 8, 18)
-local styleBtn = button(body, "STYLE", 15, 30, 158, 34, C.blue)
-local abilityBtn = button(body, "ABILITY", 187, 30, 158, 34)
-label(body, "Dùng vé quay", 68, 18)
-local normalBtn = button(body, "NORMAL", 15, 88, 158, 34, C.blue)
-local luckyBtn = button(body, "LUCKY", 187, 88, 158, 34)
-label(body, "Tên muốn săn (phân cách bằng dấu phẩy)", 128, 18)
-local targetBox = box(body, "Ví dụ: Timeskip Hinoto, Ronin", 148, "")
-label(body, "Giãn cách (giây)          Giới hạn lượt", 188, 18)
-local delayBox = box(body, "Giây", 208, "2.0")
-delayBox.Size = UDim2.fromOffset(158, 34)
-local countBox = box(body, "Số lượt", 208, "100")
-countBox.Position = UDim2.fromOffset(187, 208)
-countBox.Size = UDim2.fromOffset(158, 34)
-local startBtn = button(body, "BẮT ĐẦU AUTO SPIN", 15, 251, 330, 37, C.green)
-local status = label(body, "Sẵn sàng | Mặc định NORMAL", 350, 27, 12, C.muted)
+local function smallLabel(text, x, y, w)
+    return new("TextLabel", {
+        Position = UDim2.fromOffset(x,y), Size = UDim2.fromOffset(w,15),
+        BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
+        TextSize = 10, TextColor3 = C.muted, Text = text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, body)
+end
+smallLabel("LOẠI QUAY", 15, 6, 159)
+smallLabel("LOẠI SPIN", 187, 6, 158)
+local styleBtn = button(body, "STYLE", 15, 24, 76, 29, C.blue)
+local abilityBtn = button(body, "ABILITY", 95, 24, 79, 29)
+local normalBtn = button(body, "NORMAL", 187, 24, 76, 29, C.blue)
+local luckyBtn = button(body, "LUCKY", 267, 24, 78, 29)
+for _, b in ipairs({styleBtn, abilityBtn, normalBtn, luckyBtn}) do b.TextSize = 12 end
+
+smallLabel("STYLE / ABILITY MUỐN SĂN", 15, 59, 330)
+local targetBox = box(body, "Ví dụ: Timeskip Hinoto, Ronin, Sanju", 77, "")
+targetBox.Size = UDim2.fromOffset(330, 31)
+
+smallLabel("DELAY (GIÂY)", 15, 113, 158)
+smallLabel("GIỚI HẠN LƯỢT", 187, 113, 158)
+local delayBox = box(body, "Giây", 130, "0.5")
+delayBox.Size = UDim2.fromOffset(158, 30)
+local countBox = box(body, "Số lượt", 130, "100")
+countBox.Position = UDim2.fromOffset(187, 130)
+countBox.Size = UDim2.fromOffset(158, 30)
+
+local autoStartBtn = button(body, "AUTO START: TẮT", 15, 168, 159, 32)
+local hubBtn = button(body, "AUTO FURHUB: TẮT", 187, 168, 158, 32)
+autoStartBtn.TextSize, hubBtn.TextSize = 12, 12
+local startBtn = button(body, "▶ BẮT ĐẦU AUTO SPIN", 15, 207, 330, 35, C.green)
+local manualHubBtn = button(body, "↗ MỞ FURHUB NGAY", 15, 249, 236, 34, Color3.fromRGB(88, 68, 153))
+local saveBtn = button(body, "LƯU", 259, 249, 86, 34, C.blue)
+
+local status = label(body, "Sẵn sàng", 289, 28, 11, C.muted)
 status.TextWrapped = true
-local progress = label(body, "Đã gửi: 0 lượt", 379, 18, 12, C.muted)
-local note = label(body, "", 400, 18, 11, C.muted)
-local settingsHint = label(body, "Cài đặt: đang tải...", 422, 18, 11, C.muted)
-settingsHint.Size = UDim2.fromOffset(255, 18)
-local saveBtn = button(body, "LƯU", 280, 416, 65, 27, C.blue)
-local hubBtn = button(body, "HẾT GIỚI HẠN → FURHUB: TẮT", 15, 455, 330, 32)
-local hubHint = label(body, "", 491, 17, 11, C.muted)
-local autoStartBtn = button(body, "AUTO START KHI EXECUTE: TẮT", 15, 295, 330, 32)
-local autoStartHint = label(body, "Bật để tự quay ở lần EXECUTE tiếp theo", 330, 19, 11, C.muted)
+local progress = label(body, "Đã quay: 0 / 100", 320, 18, 11, C.muted)
+progress.TextTruncate = Enum.TextTruncate.AtEnd
+local settingsHint = label(body, "Cài đặt: đang tải...", 341, 16, 10, C.muted)
+settingsHint.TextTruncate = Enum.TextTruncate.AtEnd
 
 local FURHUB_URL = "https://raw.githubusercontent.com/mrmangola/FurHub/main/FurHub"
 
@@ -325,10 +345,10 @@ local function refreshButtons()
     abilityBtn.BackgroundColor3 = mode == "Ability" and C.blue or C.input
     normalBtn.BackgroundColor3 = spinKind == "Normal" and C.blue or C.input
     luckyBtn.BackgroundColor3 = spinKind == "Lucky" and C.blue or C.input
-    hubBtn.BackgroundColor3 = openFurHub and C.red or C.input
-    hubBtn.Text = openFurHub and "HẾT GIỚI HẠN → FURHUB: BẬT" or "HẾT GIỚI HẠN → FURHUB: TẮT"
-    autoStartBtn.BackgroundColor3 = autoStart and C.green or C.input
-    autoStartBtn.Text = autoStart and "AUTO START KHI EXECUTE: BẬT" or "AUTO START KHI EXECUTE: TẮT"
+    hubBtn.BackgroundColor3 = openFurHub and C.blue or C.input
+    hubBtn.Text = openFurHub and "AUTO FURHUB: BẬT" or "AUTO FURHUB: TẮT"
+    autoStartBtn.BackgroundColor3 = autoStart and C.blue or C.input
+    autoStartBtn.Text = autoStart and "AUTO START: BẬT" or "AUTO START: TẮT"
 end
 refreshButtons()
 
@@ -347,7 +367,7 @@ local function setStatus(message, color)
 end
 local function refreshStart()
     local busy = running or starting
-    startBtn.Text = busy and "DỪNG AUTO SPIN" or "BẮT ĐẦU AUTO SPIN"
+    startBtn.Text = busy and "■ DỪNG AUTO SPIN" or "▶ BẮT ĐẦU AUTO SPIN"
     startBtn.BackgroundColor3 = busy and C.red or C.green
 end
 styleBtn.MouseButton1Click:Connect(function()
@@ -383,7 +403,7 @@ delayBox.FocusLost:Connect(function() saveSettings() end)
 countBox.FocusLost:Connect(function() saveSettings() end)
 hubBtn.MouseButton1Click:Connect(function()
     if running or starting then
-        setStatus("Dừng Auto Spin trước khi đổi tùy chọn FurHub", C.red)
+        setStatus("Dừng quay trước khi đổi Auto FurHub", C.red)
         return
     end
     openFurHub = not openFurHub
@@ -424,6 +444,53 @@ autoStartBtn.MouseButton1Click:Connect(function()
     setStatus(savedToDisk and "AUTO START bật; có hiệu lực từ lần execute sau"
         or "AUTO START bật; cần readfile/writefile để nhớ sau rejoin",
         savedToDisk and C.green or C.red)
+end)
+
+local furHubLoading = false
+local function launchFurHub(expectedToken)
+    if not alive or furHubLoading then return end
+    if expectedToken ~= nil and token ~= expectedToken then return end
+    furHubLoading = true
+    manualHubBtn.Text = "ĐANG MỞ FURHUB..."
+    manualHubBtn.BackgroundColor3 = C.input
+    task.spawn(function()
+        if not alive or (expectedToken ~= nil and token ~= expectedToken) then
+            furHubLoading = false
+            return
+        end
+        local ok, err = pcall(function()
+            if type(loadstring) ~= "function" then
+                error("Executor không hỗ trợ loadstring")
+            end
+            local source = game:HttpGet(FURHUB_URL)
+            local entry = loadstring(source)
+            if type(entry) ~= "function" then error("Không tải được FurHub") end
+            entry()
+        end)
+        furHubLoading = false
+        if not alive then return end
+        manualHubBtn.Text = "↗ MỞ FURHUB NGAY"
+        manualHubBtn.BackgroundColor3 = Color3.fromRGB(88, 68, 153)
+        if not ok then
+            setStatus("Lỗi mở FurHub: " .. tostring(err):sub(1, 66), C.red)
+        else
+            setStatus("Đã chạy loader FurHub", C.green)
+        end
+    end)
+end
+
+manualHubBtn.MouseButton1Click:Connect(function()
+    if furHubLoading then
+        setStatus("FurHub đang được mở...", C.blue)
+        return
+    end
+    -- Stop queued rolls before manually loading the external hub.
+    if running or starting then
+        stop()
+        refreshStart()
+    end
+    setStatus("Đang mở FurHub thủ công...", C.blue)
+    launchFurHub(nil)
 end)
 
 local function beginSpin(autoLaunch)
@@ -552,24 +619,8 @@ local function beginSpin(autoLaunch)
                     setStatus("Đã chạm giới hạn " .. limit .. " lượt; FurHub đang tắt", C.muted)
                 else
                     setStatus("Không trúng sau " .. limit .. " lượt. Đang mở FurHub...", C.blue)
-                    -- Optional external script execution: explicitly enabled via UI.
-                    task.spawn(function()
-                        if not alive or token ~= myToken then return end
-                        local ok, err = pcall(function()
-                            if type(loadstring) ~= "function" then
-                                error("Executor không hỗ trợ loadstring")
-                            end
-                            local source = game:HttpGet(FURHUB_URL)
-                            local entry = loadstring(source)
-                            if type(entry) ~= "function" then error("Không tải được FurHub") end
-                            entry()
-                        end)
-                        if not ok then
-                            setStatus("Lỗi mở FurHub: " .. tostring(err):sub(1, 65), C.red)
-                        else
-                            setStatus("Đã gọi FurHub", C.green)
-                        end
-                    end)
+                    -- Enabled only via the Auto FurHub switch.
+                    launchFurHub(myToken)
                 end
             end
         end
@@ -603,8 +654,9 @@ local minimized = false
 minimize.MouseButton1Click:Connect(function()
     minimized = not minimized
     body.Visible = not minimized
-    main.Size = UDim2.fromOffset(360, minimized and 43 or fullHeight)
+    main.Size = UDim2.fromOffset(PANEL_W, minimized and 42 or PANEL_H)
     minimize.Text = minimized and "+" or "–"
+    fitToViewport()
 end)
 
 -- Drag with mouse or touch.
@@ -632,12 +684,20 @@ UserInputService.InputEnded:Connect(function(input)
     if input == dragInput then dragging = false; dragInput = nil end
 end)
 
--- Resize vertically on orientation changes, without changing a manually dragged origin.
-local cam = workspace.CurrentCamera
-if cam then
-    cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-        if not alive then return end
-        fullHeight = expandedHeight()
-        if not minimized then main.Size = UDim2.fromOffset(360, fullHeight) end
-    end)
+-- Keep the entire panel visible even in phone landscape orientation.
+-- New cameras can be created after script injection, so refresh the connection.
+local cameraConnection
+local function bindCamera()
+    if cameraConnection then cameraConnection:Disconnect() end
+    local camera = workspace.CurrentCamera
+    if camera then
+        cameraConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            if alive then fitToViewport() end
+        end)
+    end
+    fitToViewport()
 end
+bindCamera()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    if alive then bindCamera() end
+end)
