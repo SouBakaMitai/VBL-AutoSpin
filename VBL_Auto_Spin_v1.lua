@@ -1,7 +1,8 @@
--- VBL Auto Spin v1.0 | Roblox Luau
--- Standalone: no loadstring, no external HTTP requests.
--- Normal spin only by default. Real spins are consumed; no free-spin exploit.
--- UI/remote names are based on public VBL scripts and may change with game updates.
+-- VBL Auto Spin v1.1 | Roblox Luau
+-- Standalone: no external HTTP requests. Normal/Lucky both consume real spins.
+-- In historical VBL Roll examples false = Normal. true = Lucky is assumed,
+-- NOT verified against the current game. Test Lucky with limit 1 first.
+-- Game remotes and UI paths may change after updates.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -163,8 +164,8 @@ gui = new("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100,
 }, playerGui)
 local main = new("Frame", {
-    Name = "Panel", Size = UDim2.fromOffset(360, 346),
-    Position = UDim2.new(0.5, -180, 0.5, -173),
+    Name = "Panel", Size = UDim2.fromOffset(360, 410),
+    Position = UDim2.new(0.5, -180, 0.5, -205),
     BackgroundColor3 = C.bg, Active = true,
 }, gui)
 round(main, 12)
@@ -174,7 +175,7 @@ local header = new("Frame", {
     Active = true,
 }, main)
 round(header, 12)
-label(header, "VBL AUTO SPIN  |  v1.0", 12, 20, 15, C.white)
+label(header, "VBL AUTO SPIN  |  v1.1", 12, 20, 15, C.white)
 local minimize = button(header, "–", 286, 7, 28, 28)
 local close = button(header, "X", 320, 7, 28, 28, C.red)
 local body = new("Frame", {
@@ -184,23 +185,30 @@ local body = new("Frame", {
 label(body, "Chọn loại spin", 8, 18)
 local styleBtn = button(body, "STYLE", 15, 30, 158, 34, C.blue)
 local abilityBtn = button(body, "ABILITY", 187, 30, 158, 34)
-label(body, "Tên muốn săn (phân cách bằng dấu phẩy)", 71, 18)
-local targetBox = box(body, "Ví dụ: Timeskip Hinoto, Ronin", 92, "")
-label(body, "Giãn cách (giây)          Giới hạn lượt", 132, 18)
-local delayBox = box(body, "Giây", 152, "2.0")
+label(body, "Dùng vé quay", 68, 18)
+local normalBtn = button(body, "NORMAL", 15, 88, 158, 34, C.blue)
+local luckyBtn = button(body, "LUCKY", 187, 88, 158, 34)
+label(body, "Tên muốn săn (phân cách bằng dấu phẩy)", 128, 18)
+local targetBox = box(body, "Ví dụ: Timeskip Hinoto, Ronin", 148, "")
+label(body, "Giãn cách (giây)          Giới hạn lượt", 188, 18)
+local delayBox = box(body, "Giây", 208, "2.0")
 delayBox.Size = UDim2.fromOffset(158, 34)
-local countBox = box(body, "Số lượt", 152, "100")
-countBox.Position = UDim2.fromOffset(187, 152)
+local countBox = box(body, "Số lượt", 208, "100")
+countBox.Position = UDim2.fromOffset(187, 208)
 countBox.Size = UDim2.fromOffset(158, 34)
-local startBtn = button(body, "BẮT ĐẦU AUTO SPIN", 15, 198, 330, 37, C.green)
-local status = label(body, "Sẵn sàng | Chỉ dùng spin hiện có", 243, 22, 12, C.muted)
+local startBtn = button(body, "BẮT ĐẦU AUTO SPIN", 15, 251, 330, 37, C.green)
+local status = label(body, "Sẵn sàng | Mặc định NORMAL", 297, 27, 12, C.muted)
 status.TextWrapped = true
-local progress = label(body, "Đã gửi: 0 lượt", 270, 18, 12, C.muted)
+local progress = label(body, "Đã gửi: 0 lượt", 326, 18, 12, C.muted)
+local note = label(body, "LUCKY: test giới hạn 1 lượt trước khi dùng nhiều!", 347, 18, 11, C.muted)
 
-local mode = "Style"
+local mode, spinKind = "Style", "Normal"
+local luckyArmedUntil = 0
 local function refreshButtons()
     styleBtn.BackgroundColor3 = mode == "Style" and C.blue or C.input
     abilityBtn.BackgroundColor3 = mode == "Ability" and C.blue or C.input
+    normalBtn.BackgroundColor3 = spinKind == "Normal" and C.blue or C.input
+    luckyBtn.BackgroundColor3 = spinKind == "Lucky" and C.blue or C.input
 end
 local function setStatus(message, color)
     if alive then status.Text = message; status.TextColor3 = color or C.muted end
@@ -210,10 +218,22 @@ local function refreshStart()
     startBtn.BackgroundColor3 = running and C.red or C.green
 end
 styleBtn.MouseButton1Click:Connect(function()
-    if not running then mode = "Style"; refreshButtons() end
+    if not running then mode = "Style"; luckyArmedUntil = 0; refreshButtons() end
 end)
 abilityBtn.MouseButton1Click:Connect(function()
-    if not running then mode = "Ability"; refreshButtons() end
+    if not running then mode = "Ability"; luckyArmedUntil = 0; refreshButtons() end
+end)
+normalBtn.MouseButton1Click:Connect(function()
+    if not running then
+        spinKind = "Normal"; luckyArmedUntil = 0; refreshButtons()
+        setStatus("Đã chọn Normal Spin")
+    end
+end)
+luckyBtn.MouseButton1Click:Connect(function()
+    if not running then
+        spinKind = "Lucky"; luckyArmedUntil = 0; refreshButtons()
+        setStatus("Lucky Spin dùng vé hiếm, cần xác nhận trước khi quay", C.red)
+    end
 end)
 
 startBtn.MouseButton1Click:Connect(function()
@@ -244,6 +264,16 @@ startBtn.MouseButton1Click:Connect(function()
         setStatus("Không tìm thấy lệnh quay " .. mode .. " (game có thể đã cập nhật)", C.red)
         return
     end
+    -- Two taps required when selecting Lucky Spin; no automatic fallback to Normal.
+    if spinKind == "Lucky" then
+        if os.clock() > luckyArmedUntil then
+            luckyArmedUntil = os.clock() + 8
+            setStatus("LUCKY tiêu vé hiếm! Nhấn BẮT ĐẦU lần nữa trong 8 giây", C.red)
+            return
+        end
+    end
+    luckyArmedUntil = 0
+    local useLucky = spinKind == "Lucky"
     running = true
     token = token + 1
     local myToken = token
@@ -266,10 +296,10 @@ startBtn.MouseButton1Click:Connect(function()
                 setStatus("Đã chạm giới hạn " .. limit .. " lượt", C.muted)
                 break
             end
-            setStatus("Đang quay " .. mode .. "...", C.blue)
-            -- false = normal spin in publicly available older VBL Roll examples.
-            -- This is a real remote call, so the game's server still decides cost/result.
-            local ok, result = pcall(function() return remote:InvokeServer(false) end)
+            setStatus("Đang quay " .. spinKind .. " " .. mode .. "...", C.blue)
+            -- Historical examples use false for Normal; true for Lucky is unverified.
+            -- No fallback: if Lucky is rejected, stop instead of using Normal.
+            local ok, result = pcall(function() return remote:InvokeServer(useLucky) end)
             if not ok then
                 setStatus("Lỗi gọi lệnh quay: " .. tostring(result):sub(1, 68), C.red)
                 break
@@ -296,7 +326,7 @@ local minimized = false
 minimize.MouseButton1Click:Connect(function()
     minimized = not minimized
     body.Visible = not minimized
-    main.Size = UDim2.fromOffset(360, minimized and 43 or 346)
+    main.Size = UDim2.fromOffset(360, minimized and 43 or 410)
     minimize.Text = minimized and "+" or "–"
 end)
 
