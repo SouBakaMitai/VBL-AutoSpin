@@ -193,7 +193,7 @@ local header = new("Frame", {
     Active = true,
 }, main)
 round(header, 12)
-label(header, "VBL AUTO SPIN  |  v1.4", 12, 20, 15, C.white)
+label(header, "VBL AUTO SPIN", 12, 20, 15, C.white)
 local minimize = button(header, "–", 286, 7, 28, 28)
 local close = button(header, "X", 320, 7, 28, 28, C.red)
 local body = new("ScrollingFrame", {
@@ -221,12 +221,12 @@ local startBtn = button(body, "BẮT ĐẦU AUTO SPIN", 15, 251, 330, 37, C.gree
 local status = label(body, "Sẵn sàng | Mặc định NORMAL", 350, 27, 12, C.muted)
 status.TextWrapped = true
 local progress = label(body, "Đã gửi: 0 lượt", 379, 18, 12, C.muted)
-local note = label(body, "LUCKY: test giới hạn 1 lượt trước khi dùng nhiều!", 400, 18, 11, C.muted)
+local note = label(body, "", 400, 18, 11, C.muted)
 local settingsHint = label(body, "Cài đặt: đang tải...", 422, 18, 11, C.muted)
 settingsHint.Size = UDim2.fromOffset(255, 18)
 local saveBtn = button(body, "LƯU", 280, 416, 65, 27, C.blue)
 local hubBtn = button(body, "HẾT GIỚI HẠN → FURHUB: TẮT", 15, 455, 330, 32)
-local hubHint = label(body, "Chỉ mở hub; KHÔNG tự nhấn Roll Back Data", 491, 17, 11, C.muted)
+local hubHint = label(body, "", 491, 17, 11, C.muted)
 local autoStartBtn = button(body, "AUTO START KHI EXECUTE: TẮT", 15, 295, 330, 32)
 local autoStartHint = label(body, "Bật để tự quay ở lần EXECUTE tiếp theo", 330, 19, 11, C.muted)
 
@@ -567,7 +567,7 @@ local function beginSpin(autoLaunch)
                         if not ok then
                             setStatus("Lỗi mở FurHub: " .. tostring(err):sub(1, 65), C.red)
                         else
-                            setStatus("Đã gọi FurHub; chọn Roll Back Data thủ công", C.green)
+                            setStatus("Đã gọi FurHub", C.green)
                         end
                     end)
                 end
